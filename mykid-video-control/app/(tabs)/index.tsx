@@ -16,10 +16,12 @@ export default function ControlScreen() {
   const [code, setCode] = useState<string>(generateCode());
   const [url, setUrl] = useState<string>('');
   const [status, setStatus] = useState<'idle' | 'connecting' | 'joined' | 'error'>('idle');
+  const [peer, setPeer] = useState<{ clientPresent: boolean; controlPresent: boolean }>({ clientPresent: false, controlPresent: false });
   const wsRef = useRef<WebSocket | null>(null);
 
+  const isValidYouTube = useCallback((u: string) => !!extractYouTubeVideoId(u), []);
   const canJoin = useMemo(() => /^\d{6}$/.test(code), [code]);
-  const canSend = useMemo(() => status === 'joined' && url.trim().length > 0, [status, url]);
+  const canSend = useMemo(() => status === 'joined' && isValidYouTube(url), [status, url, isValidYouTube]);
 
   const connect = useCallback(() => {
     if (!canJoin) return;
@@ -37,6 +39,8 @@ export default function ControlScreen() {
         const msg = JSON.parse(String(ev.data));
         if (msg?.type === 'joined') {
           setStatus('joined');
+        } else if (msg?.type === 'peer_status') {
+          setPeer({ clientPresent: !!msg.clientPresent, controlPresent: !!msg.controlPresent });
         } else if (msg?.type === 'error') {
           setStatus('error');
         }
@@ -53,6 +57,36 @@ export default function ControlScreen() {
     if (!ws || status !== 'joined') return;
     ws.send(JSON.stringify({ type: 'play', url: url.trim() }));
   }, [status, url]);
+
+  const sendPause = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || status !== 'joined') return;
+    ws.send(JSON.stringify({ type: 'pause' }));
+  }, [status]);
+
+  const sendResume = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || status !== 'joined') return;
+    ws.send(JSON.stringify({ type: 'resume' }));
+  }, [status]);
+
+  const setSpeed = useCallback((speed: number) => {
+    const ws = wsRef.current;
+    if (!ws || status !== 'joined') return;
+    ws.send(JSON.stringify({ type: 'speed', speed }));
+  }, [status]);
+
+  const sendStop = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || status !== 'joined') return;
+    ws.send(JSON.stringify({ type: 'stop' }));
+  }, [status]);
+
+  const sendSeek = useCallback((seconds: number) => {
+    const ws = wsRef.current;
+    if (!ws || status !== 'joined') return;
+    ws.send(JSON.stringify({ type: 'seek', seconds }));
+  }, [status]);
 
   return (
     <ThemedView style={styles.container}>
@@ -82,7 +116,28 @@ export default function ControlScreen() {
         autoCorrect={false}
         style={styles.input}
       />
+      {!isValidYouTube(url) && url.length > 0 && (
+        <ThemedText style={{ color: '#ef4444' }}>Invalid YouTube link</ThemedText>
+      )}
       <Button title="Send to Client" onPress={sendPlay} disabled={!canSend} />
+      <View style={styles.row}>
+        <Button title="Pause" onPress={sendPause} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="Resume" onPress={sendResume} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="Stop" onPress={sendStop} disabled={!peer.clientPresent || status !== 'joined'} />
+      </View>
+      <View style={styles.row}>
+        <Button title="0.5x" onPress={() => setSpeed(0.5)} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="1x" onPress={() => setSpeed(1)} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="1.5x" onPress={() => setSpeed(1.5)} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="2x" onPress={() => setSpeed(2)} disabled={!peer.clientPresent || status !== 'joined'} />
+      </View>
+      <View style={styles.row}>
+        <Button title="Seek -10s" onPress={() => sendSeek(-10)} disabled={!peer.clientPresent || status !== 'joined'} />
+        <Button title="Seek +10s" onPress={() => sendSeek(10)} disabled={!peer.clientPresent || status !== 'joined'} />
+      </View>
+      <ThemedText style={styles.hint}>
+        {peer.clientPresent ? 'Client connected' : 'Client not connected'} • {peer.controlPresent ? 'Control connected' : 'Control not connected'}
+      </ThemedText>
       <ThemedText style={styles.hint}>Share the code with the client device to pair.</ThemedText>
     </ThemedView>
   );
@@ -121,3 +176,23 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+function extractYouTubeVideoId(inputUrl: string): string | null {
+  try {
+    const url = String(inputUrl).trim();
+    const patterns: RegExp[] = [
+      /(?:v=)([\w-]{6,})/i,
+      /youtu\.be\/([\w-]{6,})/i,
+      /youtube\.com\/embed\/([\w-]{6,})/i,
+      /youtube\.com\/shorts\/([\w-]{6,})/i,
+      /youtube\.com\/live\/([\w-]{6,})/i,
+    ];
+    for (const re of patterns) {
+      const m = url.match(re);
+      if (m && m[1]) return m[1];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

@@ -45,6 +45,7 @@ wss.on('connection', (ws: WebSocket) => {
       room[joinRole] = ws;
       rooms.set(code, room);
       ws.send(JSON.stringify({ type: 'joined', code, role }));
+      broadcastPeerStatus(code);
       return;
     }
 
@@ -66,6 +67,74 @@ wss.on('connection', (ws: WebSocket) => {
       }
       return;
     }
+
+    if (msg?.type === 'pause' || msg?.type === 'resume') {
+      const room = rooms.get(joinedCode);
+      if (!room) return;
+      const target = room.client;
+      if (target && target.readyState === WebSocket.OPEN) {
+        target.send(JSON.stringify({ type: 'control', action: msg.type }));
+        ws.send(JSON.stringify({ type: 'ack', action: msg.type }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: 'CLIENT_NOT_CONNECTED' }));
+      }
+      return;
+    }
+
+    if (msg?.type === 'speed' && typeof msg.speed === 'number') {
+      const room = rooms.get(joinedCode);
+      if (!room) return;
+      const target = room.client;
+      if (target && target.readyState === WebSocket.OPEN) {
+        // Clamp speed 0.25 - 2
+        const speed = Math.max(0.25, Math.min(2, msg.speed));
+        target.send(JSON.stringify({ type: 'control', action: 'speed', speed }));
+        ws.send(JSON.stringify({ type: 'ack', action: 'speed', speed }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: 'CLIENT_NOT_CONNECTED' }));
+      }
+      return;
+    }
+
+    if (msg?.type === 'stop') {
+      const room = rooms.get(joinedCode);
+      if (!room) return;
+      const target = room.client;
+      if (target && target.readyState === WebSocket.OPEN) {
+        target.send(JSON.stringify({ type: 'control', action: 'stop' }));
+        ws.send(JSON.stringify({ type: 'ack', action: 'stop' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: 'CLIENT_NOT_CONNECTED' }));
+      }
+      return;
+    }
+
+    if (msg?.type === 'seek' && typeof msg.seconds === 'number') {
+      const room = rooms.get(joinedCode);
+      if (!room) return;
+      const target = room.client;
+      if (target && target.readyState === WebSocket.OPEN) {
+        const seconds = Number(msg.seconds);
+        target.send(JSON.stringify({ type: 'control', action: 'seek', seconds }));
+        ws.send(JSON.stringify({ type: 'ack', action: 'seek', seconds }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: 'CLIENT_NOT_CONNECTED' }));
+      }
+      return;
+    }
+
+    if (msg?.type === 'next' || msg?.type === 'previous') {
+      const room = rooms.get(joinedCode);
+      if (!room) return;
+      const target = room.client;
+      if (target && target.readyState === WebSocket.OPEN) {
+        target.send(JSON.stringify({ type: 'control', action: msg.type }));
+        ws.send(JSON.stringify({ type: 'ack', action: msg.type }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: 'CLIENT_NOT_CONNECTED' }));
+      }
+      return;
+    }
   });
 
   ws.on('close', () => {
@@ -80,10 +149,23 @@ wss.on('connection', (ws: WebSocket) => {
     } else {
       rooms.set(joinedCode, room);
     }
+    broadcastPeerStatus(joinedCode);
   });
 });
 
 // eslint-disable-next-line no-console
 console.log(`[ws-server] listening on ws://localhost:${port}`);
+
+function broadcastPeerStatus(code: string) {
+  const room = rooms.get(code);
+  if (!room) return;
+  const payload = JSON.stringify({
+    type: 'peer_status',
+    clientPresent: !!room.client && room.client.readyState === WebSocket.OPEN,
+    controlPresent: !!room.control && room.control.readyState === WebSocket.OPEN,
+  });
+  try { room.client?.send(payload); } catch {}
+  try { room.control?.send(payload); } catch {}
+}
 
 

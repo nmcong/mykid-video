@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, StyleSheet, TextInput, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebView } from 'react-native-webview';
+import YoutubePlayer from 'react-native-youtube-iframe';
 
 function getWsUrl() {
   const envUrl = process.env.EXPO_PUBLIC_WS_URL as string | undefined;
@@ -13,6 +13,7 @@ export default function ClientScreen() {
   const [code, setCode] = useState<string>('');
   const [status, setStatus] = useState<'idle' | 'connecting' | 'joined' | 'error'>('idle');
   const [videoUrl, setVideoUrl] = useState<string>('');
+  const [videoId, setVideoId] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
 
   const canJoin = useMemo(() => /^\d{6}$/.test(code), [code]);
@@ -33,6 +34,8 @@ export default function ClientScreen() {
           setStatus('joined');
         } else if (msg?.type === 'play' && typeof msg.url === 'string') {
           setVideoUrl(msg.url);
+          const id = extractYouTubeVideoId(msg.url);
+          setVideoId(id || '');
         } else if (msg?.type === 'error') {
           setStatus('error');
         }
@@ -68,17 +71,39 @@ export default function ClientScreen() {
       </View>
 
       <View style={styles.divider} />
-      {videoUrl ? (
+      {videoId ? (
         <View style={{ flex: 1 }}>
           <ThemedText style={styles.label}>Playing:</ThemedText>
           <ThemedText numberOfLines={1}>{videoUrl}</ThemedText>
-          <WebView style={{ flex: 1, marginTop: 8 }} source={{ uri: videoUrl }} allowsFullscreenVideo />
+          <View style={{ flex: 1, marginTop: 8 }}>
+            <YoutubePlayer height={240} play={true} videoId={videoId} />
+          </View>
         </View>
       ) : (
         <ThemedText style={styles.hint}>Waiting for a YouTube URL from controller…</ThemedText>
       )}
     </ThemedView>
   );
+}
+
+function extractYouTubeVideoId(inputUrl: string): string | null {
+  try {
+    const url = String(inputUrl).trim();
+    const patterns: RegExp[] = [
+      /(?:v=)([\w-]{6,})/i, // watch?v=
+      /youtu\.be\/([\w-]{6,})/i, // youtu.be/
+      /youtube\.com\/embed\/([\w-]{6,})/i, // /embed/
+      /youtube\.com\/shorts\/([\w-]{6,})/i, // /shorts/
+      /youtube\.com\/live\/([\w-]{6,})/i, // /live/
+    ];
+    for (const re of patterns) {
+      const m = url.match(re);
+      if (m && m[1]) return m[1];
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 const styles = StyleSheet.create({

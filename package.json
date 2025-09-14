@@ -1,0 +1,29 @@
+{
+  "name": "mykid-video",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-all": "tsx scripts/start-both.ts",
+    "start-client": "npm --prefix mykid-video-client run start",
+    "start-control": "npm --prefix mykid-video-control run start",
+    "start-all:android": "tsx scripts/start-both.ts --android",
+    "start-all:web": "tsx scripts/start-both.ts --web",
+    "ws:start": "tsx scripts/ws-server.ts",
+    "ws:start:dev": "cross-env WS_PORT=4000 tsx scripts/ws-server.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^24.4.0",
+    "@types/ws": "^8.18.1",
+    "cross-env": "^10.0.0",
+    "npm-run-all": "^4.1.5",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "ws": "^8.18.3"
+  }
+}
